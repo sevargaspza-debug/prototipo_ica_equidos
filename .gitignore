@@ -3,7 +3,7 @@
 .env.*
 !.env.example
 
-# Dependencias y artefactos (el proyecto no las usa, pero se previenen)
+# Dependencias del servicio de base de datos (mysql2) y artefactos
 node_modules/
 *.log
 

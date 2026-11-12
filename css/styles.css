@@ -728,6 +728,35 @@ body.modal-open { overflow: hidden; }
 #toast.show { opacity: 1; transform: translateY(0); }
 #toast.error { background: var(--danger); }
 
+/* --------------------------- Estado de sincronización -------------------- */
+.sync-status {
+    font-size: .76rem;
+    font-weight: 700;
+    padding: .32rem .65rem;
+    border-radius: 999px;
+    border: 1px solid #cbd5e1;
+    background: #f1f5f9;
+    color: #475569;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+.sync-status.pending {
+    background: #fff6e5;
+    border-color: #f0d9a8;
+    color: #7a5a00;
+}
+.sync-status.ok {
+    background: #e8f5ec;
+    border-color: #b7dfc3;
+    color: #1f6b3b;
+}
+.sync-status.off {
+    background: #fdecec;
+    border-color: #f3c2c2;
+    color: #8a1f1f;
+}
+
 /* ------------------------------- Responsive ------------------------------ */
 @media (max-width: 1024px) {
     .indicator-bottom { grid-template-columns: 1fr; }

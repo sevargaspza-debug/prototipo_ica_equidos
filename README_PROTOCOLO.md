@@ -1,11 +1,19 @@
 # Prototipo — Sistema ICA de Bienestar Animal en Équidos
 
-Prototipo **navegable (SPA)** en HTML + CSS + JavaScript puro, **sin frameworks** y sin servidor.
+Prototipo **navegable (SPA)** en HTML + CSS + JavaScript puro, **sin frameworks**.
 Alineado con la norma **ICA V2.0 (2023)** y con los documentos corregidos del proyecto.
+
+El núcleo funciona **sin servidor** y guarda el estado en `localStorage`. De forma
+opcional, el mismo estado se sincroniza con **MariaDB** mediante un pequeño
+servicio local (`server/db-api.js`) y, en Docker, con un contenedor MariaDB.
+Si la base de datos o el servicio no están disponibles, el prototipo sigue
+funcionando con `localStorage` y solo muestra el indicador **Sin conexión**.
 
 ---
 
 ## Cómo abrirlo
+
+### Opción A — Sin servidor (offline)
 
 1. Abrir `index.html` con doble clic en Chrome, Edge o Firefox.
 2. En el login, escribir cualquier usuario y contraseña (prototipo: no valida credenciales).
@@ -13,7 +21,27 @@ Alineado con la norma **ICA V2.0 (2023)** y con los documentos corregidos del pr
 4. Para reiniciar el prototipo: abrir la consola del navegador y ejecutar
    `localStorage.removeItem('ica_equidos_v3')`, luego recargar.
 
-> No requiere instalar nada ni levantar un servidor.
+> No requiere instalar nada ni levantar un servidor. El plan de mejora con IA
+> necesita el proxy del servidor o una clave propia de Gemini.
+
+### Opción B — Con MariaDB local
+
+1. Iniciar la instancia MariaDB del prototipo en el puerto **3307**
+   (por ejemplo con `..\servidor_ica\iniciar_mariadb.ps1`).
+2. Verificar que exista la base `ica_equidos` y la tabla `estado_aplicacion`
+   (scripts en `db/init/`).
+3. En esta carpeta: `Copy-Item .env.example .env`, ajustar credenciales y
+   `npm install` una sola vez.
+4. Ejecutar `npm run db-api` y abrir **http://127.0.0.1:3001**.
+5. El indicador de la barra superior muestra **Sincronizado** cuando el estado
+   quedó guardado en MariaDB.
+
+### Opción C — Todo en Docker
+
+1. `Copy-Item .env.example .env` y definir `GEMINI_API_KEY` si se usará la IA.
+2. `docker compose up --build` y abrir **http://localhost:8080**.
+3. Docker levanta MariaDB 11.4 y ejecuta los scripts de `db/init/` la primera vez.
+   Para reiniciar la base desde cero: `docker compose down -v`.
 
 ---
 
@@ -40,9 +68,26 @@ prototipo_ica_equidos/
 ├── js/
 │   ├── data.js                    # Catálogo, etapas, muestreo y cálculos
 │   ├── app.js                     # Lógica de la SPA
+│   ├── sync.js                    # Sincronización opcional con MariaDB
 │   └── html2pdf.bundle.min.js     # Exportación a PDF (offline)
 ├── data/
 │   └── ica_catalogo.json          # Catálogo exportado (C1=43, C2=32)
+├── server/
+│   ├── db-api.js                  # API de estado y servidor local de la SPA
+│   ├── sync-service.js            # Estado JSON + proyección al modelo V3
+│   ├── proxy.js                   # Proxy nativo de Gemini (sin npm)
+│   └── gemini-core.mjs            # Núcleo compartido del proxy
+├── db/
+│   ├── init/01-modelo.sql         # Modelo V3, catálogos y semillas
+│   ├── init/02-sync.sql           # estado_aplicacion y usuario ica_app
+│   └── README.md
+├── docker/                        # Arranque del proxy y de la API en el contenedor
+├── nginx/default.conf             # Estáticos + proxy /api
+├── api/, functions/               # Adaptadores Gemini para Vercel y Cloudflare
+├── package.json                   # Solo servidor: mysql2
+├── Dockerfile
+├── docker-compose.yml
+├── .env.example
 └── README_PROTOCOLO.md
 ```
 
@@ -114,6 +159,47 @@ Puntaje global = Σ (puntaje libertad × peso libertad)   [20/15/30/15/20 %]
 
 ---
 
+## Base de datos y sincronización
+
+El prototipo es **local-first**: cada cambio se guarda primero en `localStorage`
+y después se envía, con un retardo corto, al servicio de MariaDB. La interfaz
+nunca bloquea una acción por falta de conexión.
+
+| Elemento | Detalle |
+|---|---|
+| **Estado completo** | Se guarda como JSON en `estado_aplicacion`, una fila por usuario. |
+| **Modelo relacional** | El mismo estado se proyecta a las 17 tablas V3 (fincas, inventario, evaluaciones, respuestas, resultados, documentos, plan y sesión). |
+| **Usuario activo** | El nombre escrito en el login es la clave de sincronización. |
+| **Finca activa** | Se persiste en `sesion_trabajo`, por usuario. |
+| **Sin conexión** | El chip de la barra superior muestra **Sin conexión** y la app continúa con `localStorage`. Al volver la conexión, se reintenta el envío. |
+| **Logout** | Descarta el estado en cola para evitar que se reenvíe el estado de la sesión anterior. |
+
+### API local
+
+| Método | Ruta | Uso |
+|---|---|---|
+| `GET` | `/api/health` | Versión de MariaDB, puerto, base y número de tablas. |
+| `GET` | `/api/state?usuario=...` | Estado JSON del usuario. |
+| `POST` | `/api/state` | Guarda `{ usuario, state }` y proyecta el modelo. |
+| `GET` | `/api/resumen` | Conteos operativos y últimas evaluaciones. |
+
+### Variables de entorno
+
+| Variable | Valor local | Valor Docker |
+|---|---|---|
+| `DB_HOST` | `127.0.0.1` | `db` (servicio interno) |
+| `DB_PORT` | `3307` | `3306` |
+| `DB_USER` | `ica_app` | `ica_app` |
+| `DB_NAME` | `ica_equidos` | `ica_equidos` |
+| `DB_API_PORT` | `3001` | `3001` |
+| `GEMINI_API_KEY` | opcional | opcional, solo en el proxy |
+
+La API de base de datos usa `mysql2` (única dependencia npm) y vive separada del
+proxy de Gemini, que sigue usando solo módulos nativos de Node. El frontend no
+usa npm, bundlers, frameworks, módulos ES ni CDN.
+
+---
+
 ## Reglas ICA implementadas
 
 | Tema | Implementación |
@@ -148,8 +234,10 @@ Puntaje global = Σ (puntaje libertad × peso libertad)   [20/15/30/15/20 %]
 
 ## Notas
 
-- Prototipo **académico/demostrativo**: autenticación, base de datos e IA de recomendaciones
-  están simplificadas (se simulan con `localStorage`).
+- Prototipo **académico/demostrativo**: la autenticación es simulada y la IA de
+  recomendaciones es opcional. La persistencia es local y, si el servicio está
+  disponible, se respalda en MariaDB; ninguna de las dos rutas valida usuarios
+  reales.
 - Las descripciones, metodologías y preguntas de los indicadores son de referencia. En producción
   deben reemplazarse por el texto literal de los Capítulos I y II de la norma
   (ver `data/ica_catalogo.json`, campos `descripcion`, `metodologia` y `preguntas`).

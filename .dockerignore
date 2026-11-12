@@ -7,8 +7,10 @@
 # Adaptadores de otras plataformas y documentación (no se copian a la imagen).
 api/
 functions/
+db/
 PROMPT_MOCKUP.md
 README_PROTOCOLO.md
+AGENTS.md
 
 node_modules/
 *.log
