@@ -1,0 +1,18 @@
+{
+  "name": "prototipo-ica-equidos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Prototipo ICA de bienestar animal en équidos con sincronización MariaDB",
+  "scripts": {
+    "start": "node server/db-api.js",
+    "db-api": "node server/db-api.js",
+    "gemini": "node server/proxy.js",
+    "check": "node --check js/data.js && node --check js/app.js && node --check js/sync.js && node --check server/db-api.js && node --check server/sync-service.js && node --check server/proxy.js && node --check api/gemini.js && node --check functions/api/gemini.js && node --check server/gemini-core.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "mysql2": "^3.12.0"
+  }
+}

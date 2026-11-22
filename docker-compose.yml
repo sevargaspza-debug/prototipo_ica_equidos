@@ -7,4 +7,42 @@ services:
     environment:
       # Se toma del archivo .env (misma carpeta que este compose) o del entorno.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Por defecto usa la MariaDB del servicio `db`. Para usar la MariaDB
+      # instalada en Windows: DB_HOST_DOCKER=host.docker.internal y
+      # DB_PORT_DOCKER=3307 en .env.
+      DB_HOST: ${DB_HOST_DOCKER:-db}
+      DB_PORT: ${DB_PORT_DOCKER:-3306}
+      DB_USER: ${DB_USER:-ica_app}
+      DB_PASSWORD: ${DB_PASSWORD:-IcaApp2026!}
+      DB_NAME: ${DB_NAME:-ica_equidos}
+      DB_API_HOST: 127.0.0.1
+      DB_API_PORT: 3001
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: always
+
+  db:
+    image: mariadb:11.4
+    container_name: prototipo_ica_db
+    environment:
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-IcaEquidos2026!}
+      MARIADB_DATABASE: ${DB_NAME:-ica_equidos}
+      MARIADB_USER: ${DB_USER:-ica_app}
+      MARIADB_PASSWORD: ${DB_PASSWORD:-IcaApp2026!}
+      MARIADB_CHARACTER_SET: utf8mb4
+      MARIADB_COLLATION: utf8mb4_unicode_ci
+    volumes:
+      - ica_equidos_db:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 -uroot -p\"$$MARIADB_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: always
+
+volumes:
+  ica_equidos_db:

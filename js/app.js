@@ -6,7 +6,7 @@
 const STORAGE_KEY = 'ica_equidos_v3';
 const GEMINI_KEY_STORAGE = 'ica_gemini_api_key';
 // Se intentan en orden; si un modelo está saturado (503) o ya no existe (404) se pasa al siguiente.
-const GEMINI_MODELS = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite','gemini-3.8-flash'];
 const GEMINI_MODEL = GEMINI_MODELS[0];
 const GEMINI_PROXY_URL = '/api/gemini';   // proxy del servidor; la clave vive solo allí
 const GEMINI_MAX_INTENTOS = 2;        // intentos por modelo (1 reintento)
@@ -22,14 +22,18 @@ function esperar(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-let state = {
-    user: null,
-    fincas: [],
-    fincaActivaId: null,
-    inventario: [],
-    evaluaciones: [],
-    evalActualId: null
-};
+function freshState() {
+    return {
+        user: null,
+        fincas: [],
+        fincaActivaId: null,
+        inventario: [],
+        evaluaciones: [],
+        evalActualId: null
+    };
+}
+
+let state = freshState();
 
 let pendingAIEvalId = null;
 let planIAEnCurso = null;
@@ -39,11 +43,19 @@ let iaSegundosTranscurridos = 0;
 /* ------------------------------- Persistencia ---------------------------- */
 function saveState() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { console.warn(e); }
+    if (window.ICA_SYNC && window.ICA_SYNC.queue && state.user) {
+        window.ICA_SYNC.queue(state);
+    }
 }
-function loadState() {
+async function loadState() {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    try { state = Object.assign(state, JSON.parse(raw)); } catch (e) { console.warn('Estado inválido', e); }
+    if (raw) {
+        try { state = Object.assign(freshState(), JSON.parse(raw)); } catch (e) { console.warn('Estado inválido', e); }
+    }
+    if (window.ICA_SYNC && window.ICA_SYNC.load && state.user && state.user.name) {
+        const remote = await window.ICA_SYNC.load(state.user.name);
+        if (remote) state = Object.assign(freshState(), remote);
+    }
 }
 
 /* ------------------------------- Utilidades ------------------------------ */
@@ -113,12 +125,32 @@ function updateChrome() {
 
 /* ------------------------------- Login ----------------------------------- */
 function initLogin() {
-    document.getElementById('loginForm').addEventListener('submit', (e) => {
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const user = document.getElementById('username').value.trim();
         const pass = document.getElementById('password').value;
         if (!user || !pass) return;
+
+        // Si se ingresa con otro usuario, no se mezclan los datos locales.
+        if (state.user && state.user.name !== user) {
+            state = freshState();
+        }
+
         state.user = { name: user };
+
+        if (window.ICA_SYNC && window.ICA_SYNC.load) {
+            const remote = await window.ICA_SYNC.load(user);
+            if (remote) {
+                state = Object.assign(freshState(), remote);
+                state.user = { name: user };
+            } else if (window.ICA_SYNC.lastLoad && window.ICA_SYNC.lastLoad.ok) {
+                // MariaDB respondió y no hay estado previo para este usuario:
+                // se inicia limpio en lugar de reutilizar datos de otro usuario.
+                state = freshState();
+                state.user = { name: user };
+            }
+        }
+
         saveState();
         updateChrome();
         showScreen('Dashboard');
@@ -126,6 +158,7 @@ function initLogin() {
     });
 
     document.getElementById('logoutBtn').addEventListener('click', () => {
+        if (window.ICA_SYNC && window.ICA_SYNC.discard) window.ICA_SYNC.discard();
         state.user = null;
         saveState();
         updateChrome();
@@ -2008,8 +2041,8 @@ function manejarAccion(action, el) {
 }
 
 /* ------------------------------- Init ------------------------------------ */
-function init() {
-    loadState();
+async function init() {
+    await loadState();
 
     initLogin();
     initFincaForm();
